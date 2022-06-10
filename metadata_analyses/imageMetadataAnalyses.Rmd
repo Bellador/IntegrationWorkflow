@@ -1,0 +1,223 @@
+---
+title: "Bird Image Metadata Analyses"
+author: "Moritz Schott"
+date: "11 11 2021"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(rstudioapi)
+library(ggplot2)
+library(tidyr)
+library(scales)
+library(dplyr)
+library(forcats)
+library(stringr)
+library(tibble)
+
+set.seed(0)
+setwd(dirname(getActiveDocumentContext()$path))
+
+keywordsData_orig <- read.csv('data/metadata_file/imageTags.csv')
+keywordsData_orig <-keywordsData_orig%>%
+  mutate(Source=str_remove(Directory,'data/images/tagged/'))%>%
+  select(-Directory)%>%
+  separate_rows(Keywords,sep=", ")
+
+keywordsData <- keywordsData_orig%>%
+  filter(!str_detect(Keywords, "d_"))%>%
+  mutate(Keywords=ifelse(Keywords=='','a',Keywords))%>%
+  mutate(Keyword=recode_factor(Keywords,
+                               'a'="high quality, flying, individual bird",
+                               'n'='multiple birds',
+                               'q'='low quality (e.g. blurry)',
+                               's'="bird sitting"))
+
+imageData <- read.csv('data/metadata_file/imageMetaData.csv')
+imageData<-imageData[imageData$Directory!=".",] %>%
+  mutate(Source=str_remove(Directory,'data/images/untagged/'))%>%
+  select(-Directory)%>%
+  mutate(across(where(is.character), ~na_if(., "")))
+```
+
+# No. of images (for self-check)
+
+```{r}
+imageData%>%
+  group_by(Source)%>%
+  summarise(n())
+
+ggplot(imageData,aes(x=Source))+
+  geom_bar()
+```
+
+# Image metadata
+
+## Size
+
+Flickr images have a higher resolution, possibly due to the **social media** aspect while both other platforms seem to be trimmed to a certain resolution. Flickr and eBird mostly provide landscape images while iNaturalist has a large variety of image formats, including portraits.
+
+```{r size}
+imageData%>%
+  mutate(Ratio=ImageWidth/ImageHeight)%>%
+  group_by(Source)%>%
+  summarise(across(c(Megapixels, Ratio), list(mean=mean, median=median, sd=sd)))%>%
+  mutate(across(where(is.numeric), round, 2))%>%
+  pivot_longer(-Source) %>% 
+  pivot_wider(names_from=Source, values_from=value) 
+
+
+ggplot(imageData,aes(x=Source,y=Megapixels))+
+  geom_boxplot(varwidth=TRUE)
+
+ggplot(imageData,aes(x=Source,y=ImageWidth/ImageHeight))+
+  geom_boxplot(varwidth=TRUE)+
+  scale_y_continuous(sec.axis = sec_axis(~.,
+                                         breaks = c(0.5,1,1.5),
+                                         labels = c("Portrait","Square","Landscape")))
+
+```
+
+# Content
+
+Analyses of the images in terms of content, quality and specialties.
+
+```{r}
+content<- keywordsData%>%
+  group_by(Source)%>%
+  mutate(c=n())%>%
+  group_by(Keyword,.add=TRUE)%>%
+  summarise(freq = n()/min(c))
+
+content %>%
+  mutate(across(where(is.numeric), round, 2)) %>%
+  pivot_wider(names_from=Source, values_from=freq)
+
+ggplot(content,aes(x=Keyword,y=freq))+
+    geom_col()+
+    facet_wrap(~Source, ncol=3)+
+    scale_y_continuous(labels=percent_format(accuracy=1))+
+    scale_x_discrete(labels = wrap_format(30))+
+    coord_flip()
+```
+
+## Duplicates
+
+No. of session, avg session size.
+
+```{r}
+keywordsData_orig%>%
+  mutate(Keywords=ifelse(str_detect(Keywords, "d_"),Keywords,NA))%>%
+  group_by(SourceFile)%>%
+  summarise(Keywords=first(na.omit(Keywords)),
+            Source=first(Source),
+            .groups = "drop")%>%
+  mutate(Keywords=coalesce(Keywords,as.character(row_number())))%>%
+  group_by(Source)%>%
+  summarise(sessions_aka_user_day_locations=n_distinct(Keywords),
+            avg_session_length=n()/n_distinct(Keywords),
+            images_with_twin=sum(str_detect(Keywords, "d_")),
+            ratio_with_twin=images_with_twin/n())%>%
+  mutate(cleaned_share=sessions_aka_user_day_locations/sum(sessions_aka_user_day_locations), .after=avg_session_length)%>%
+  mutate(across(where(is.numeric), round, 2))%>%
+  pivot_longer(-Source) %>% 
+  pivot_wider(names_from=Source, values_from=value)
+  
+```
+
+
+# Proposed interpretations
+
+Flickr has a higher amount of archetypal and post-processed images due to the social media aspect. INaturalist exhibits a high number of low quality images while EBird seems to favor sitting birds.
+
+Over all Flickr diversifies the data corpus and increases the relative amount of archetypal images. It does not (strongly) deteriorate the quality.
+
+This analyses is incomplete for the duplicates, as they need to be analysed in a second step via the user-id and the time and location of the image. that information is currently missing or cannot be linked to single images.
+
+
+
+# Further analyses possibilities
+
+The Metadata could be analysed in many other ways. E.g. merging the image metadata with the platform metadata would show other data insights and the amount of metadata available. But this would require a more in depth analyses!
+
+```{r eval=FALSE}
+
+platformMetadataE<-data.frame(read.csv('data/metadata_platform/ebird_observations_processed.csv',sep=";"),source='ebird')
+platformMetadataF<-data.frame(read.csv('data/metadata_platform/flickr_observations_processed.csv',sep=";"),source='Flickr')
+platformMetadataI<-data.frame(read.csv('data/metadata_platform/inaturalist_observations_processed.csv',sep=";"),source='INaturalist')
+
+platformMetadata<-bind_rows(platformMetadataE,platformMetadataF,platformMetadataI)
+platformMetadata<-platformMetadata %>%
+   mutate(across(where(is.character), ~na_if(., "")))
+
+```
+
+The amount of metadata provided is highest for Flickr with both other platforms being fairly equal. This shows the potential of the integrated data for new research questions. *Please though note the comment above: metadata may be discouraged or erased by the platform and not all metadata is actually useful for the general public (like shutter speed).* This analyses therefore needs more data in form of the metadata available on the website.
+
+```{r eval=FALSE}
+imageData$na_count <- apply(imageData, 1, function(x) sum(!is.na(x)))
+platformMetadata$na_count <- apply(platformMetadata, 1, function(x) sum(!is.na(x)))
+
+imageData%>%
+  group_by(Source)%>%
+  summarise(mean=mean(na_count),
+            median=median(na_count),
+            std=sd(na_count))
+platformMetadata%>%
+  group_by(source)%>%
+  summarise(mean=mean(na_count),
+            median=median(na_count),
+            std=sd(na_count))
+```
+
+## Metadata Analyses
+
+The image metadata analyses, based on the data provided in the images, is yet incomplete. The following open questions remain:
+
+1.  what additional metadata is available on the website itself, where the image was retrieved?
+
+2.  is there any framework interference with the metadata e.g. by rewriting it on upload?
+
+3.  which parts of the metadata get manipulated on download?
+
+
+### Technical details
+
+All images seem to be uploaded in compressed JPEG format (even though they are saved as PNG?). One image on eBird is actually a video.
+
+```{r eval=FALSE}
+ggplot(imageData,aes(x=FileType,group=1))+
+  geom_bar(aes(y=stat(prop)))+
+  facet_wrap(~Source, ncol=1)+
+  scale_y_continuous(labels=percent)
+```
+
+#### Software
+
+The used computer software *can* be a proxy for the technical level of users. At least it may show a difference between the data sets. Yet this analyses would need to be run on a user level, not image level. This would need more metadata in for of the user ids linked to the images.
+
+Yet, it seems that iNaturalists are more Apple people while eBird and Flickr are more Windows people.
+
+```{r eval=FALSE}
+ggplot(imageData,aes(x=DeviceManufacturer,group=1))+
+  geom_bar(aes(y=stat(prop)))+
+  facet_wrap(~Source, ncol=3)+
+  scale_y_continuous(labels=percent)+
+  coord_flip()
+
+ggplot(imageData,aes(x=PrimaryPlatform,group=1))+
+  geom_bar(aes(y=stat(prop)))+
+  facet_wrap(~Source, ncol=3)+
+  scale_y_continuous(labels=percent)+
+  coord_flip()
+```
+
+The software that created the image may hint to post-processing steps e.g. using Adobe Photoshop. Flickr has some Adobe usage while eBird has some Canons.
+
+```{r eval=FALSE}
+ggplot(imageData,aes(x=ProfileCreator,group=1))+
+  geom_bar(aes(y=stat(prop)))+
+  facet_wrap(~Source, ncol=3)+
+  scale_y_continuous(labels=percent)+
+  coord_flip()
+```

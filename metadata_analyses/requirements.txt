@@ -1,0 +1,8 @@
+flickrapi
+jupyterlab
+sklearn
+Pillow
+git+https://github.com/openai/CLIP.git
+tabulate
+wordcloud
+folium

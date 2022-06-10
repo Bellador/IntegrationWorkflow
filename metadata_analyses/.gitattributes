@@ -1,0 +1,12 @@
+rk_metadata_extracted.csv filter=lfs diff=lfs merge=lfs -text
+ML_2021-09-27T07-58_redkit1_GB-ENG.csv filter=lfs diff=lfs merge=lfs -text
+clip_ebird_rk_chiltern_hills.csv filter=lfs diff=lfs merge=lfs -text
+clip_rk_metadata_chiltern_hills.csv filter=lfs diff=lfs merge=lfs -text
+ebird_chilter_hills.csv filter=lfs diff=lfs merge=lfs -text
+observations-192281.csv filter=lfs diff=lfs merge=lfs -text
+global_counts.png filter=lfs diff=lfs merge=lfs -text
+month_distribution.png filter=lfs diff=lfs merge=lfs -text
+tags_zug.png filter=lfs diff=lfs merge=lfs -text
+tags_zug_und_schwyz.png filter=lfs diff=lfs merge=lfs -text
+year_distribution.png filter=lfs diff=lfs merge=lfs -text
+contrib_hist.png filter=lfs diff=lfs merge=lfs -text
